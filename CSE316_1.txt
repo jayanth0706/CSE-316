@@ -1,0 +1,87 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+pthread_mutex_t lock;
+pthread_cond_t cond_student, cond_teacher;
+int pen_available = 0, paper_available = 0, question_paper_available = 0;
+
+void *student(void *arg) {
+    int student_id = *(int *) arg;
+    
+    pthread_mutex_lock(&lock);
+    while (!(pen_available && paper_available) && !(pen_available && question_paper_available) && !(paper_available && question_paper_available)) {
+        if (pen_available && !paper_available && !question_paper_available) {
+            paper_available = 1;
+            printf("Student %d has paper\n", student_id);
+            pthread_cond_signal(&cond_teacher);
+        } else if (!pen_available && paper_available && !question_paper_available) {
+            pen_available = 1;
+            printf("Student %d has pen\n", student_id);
+            pthread_cond_signal(&cond_teacher);
+        } else if (!pen_available && !paper_available && question_paper_available) {
+            pen_available = 1;
+            printf("Student %d has pen\n", student_id);
+            pthread_cond_signal(&cond_teacher);
+        } else {
+            pthread_cond_wait(&cond_student, &lock);
+        }
+    }
+    
+    printf("Student %d has completed the assignment\n", student_id);
+    pthread_mutex_unlock(&lock);
+    pthread_exit(NULL);
+}
+
+void *teacher(void *arg) {
+    int teacher_id = *(int *) arg;
+    
+    pthread_mutex_lock(&lock);
+    while (pen_available || paper_available || question_paper_available) {
+        pthread_cond_wait(&cond_teacher, &lock);
+    }
+    
+    if (teacher_id == 1) {
+        pen_available = 1;
+        paper_available = 1;
+        printf("Teacher %d placed pen and paper\n", teacher_id);
+    } else if (teacher_id == 2) {
+        pen_available = 1;
+        question_paper_available = 1;
+        printf("Teacher %d placed pen and question paper\n", teacher_id);
+    } else {
+        paper_available = 1;
+        question_paper_available = 1;
+        printf("Teacher %d placed paper and question paper\n", teacher_id);
+    }
+    
+    pthread_cond_signal(&cond_student);
+    pthread_mutex_unlock(&lock);
+    pthread_exit(NULL);
+}
+
+int main() {
+    pthread_t students[3], teachers[3];
+    int student_ids[3] = {1, 2, 3};
+    int teacher_ids[3] = {1, 2, 3};
+    
+    pthread_mutex_init(&lock, NULL);
+    pthread_cond_init(&cond_student, NULL);
+    pthread_cond_init(&cond_teacher, NULL);
+    
+    for (int i = 0; i < 3; i++) {
+        pthread_create(&students[i], NULL, student, &student_ids[i]);
+        pthread_create(&teachers[i], NULL, teacher, &teacher_ids[i]);
+    }
+    
+    for (int i = 0; i < 3; i++) {
+        pthread_join(students[i], NULL);
+        pthread_join(teachers[i], NULL);
+    }
+    
+    pthread_mutex_destroy(&lock);
+    pthread_cond_destroy(&cond_student);
+    pthread_cond_destroy(&cond_teacher);
+    
+    return 0;
+}

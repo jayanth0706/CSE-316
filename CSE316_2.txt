@@ -1,0 +1,89 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <unistd.h>
+
+pthread_mutex_t lock;
+pthread_cond_t cond_student, cond_teacher;
+int num_students = 0, num_teachers = 0, num_students_served = 0;
+
+void *student(void *arg) {
+    int student_id = *(int *) arg;
+    
+    pthread_mutex_lock(&lock);
+    num_students++;
+    printf("Student %d entered the library\n", student_id);
+    
+    while (num_teachers > 0) {
+        pthread_cond_wait(&cond_student, &lock);
+    }
+    
+    printf("Student %d is searching for books\n", student_id);
+    sleep(1); // Simulating book search time
+    
+    printf("Student %d got the books issued\n", student_id);
+    num_students_served++;
+    
+    if (num_students_served == num_students) {
+        num_students = 0;
+        pthread_cond_broadcast(&cond_teacher);
+    }
+    
+    pthread_mutex_unlock(&lock);
+    pthread_exit(NULL);
+}
+
+void *teacher(void *arg) {
+    int teacher_id = *(int *) arg;
+    
+    pthread_mutex_lock(&lock);
+    num_teachers++;
+    printf("Teacher %d entered the library\n", teacher_id);
+    
+    while (num_students > 0 || (num_students_served > 0 && num_teachers > 1)) {
+        pthread_cond_wait(&cond_teacher, &lock);
+    }
+    
+    printf("Teacher %d is getting books issued\n", teacher_id);
+    sleep(1); // Simulating book issuing time
+    
+    printf("Teacher %d got the books issued\n", teacher_id);
+    num_teachers--;
+    num_students_served = 0;
+    
+    pthread_cond_broadcast(&cond_student);
+    pthread_mutex_unlock(&lock);
+    pthread_exit(NULL);
+}
+
+int main() {
+    pthread_t students[5], teachers[3];
+    int student_ids[5] = {1, 2, 3, 4, 5};
+    int teacher_ids[3] = {1, 2, 3};
+    
+    pthread_mutex_init(&lock, NULL);
+    pthread_cond_init(&cond_student, NULL);
+    pthread_cond_init(&cond_teacher, NULL);
+    
+    for (int i = 0; i < 5; i++) {
+        pthread_create(&students[i], NULL, student, &student_ids[i]);
+    }
+    
+    for (int i = 0; i < 3; i++) {
+        pthread_create(&teachers[i], NULL, teacher, &teacher_ids[i]);
+    }
+    
+    for (int i = 0; i < 5; i++) {
+        pthread_join(students[i], NULL);
+    }
+    
+    for (int i = 0; i < 3; i++) {
+        pthread_join(teachers[i], NULL);
+    }
+    
+    pthread_mutex_destroy(&lock);
+    pthread_cond_destroy(&cond_student);
+    pthread_cond_destroy(&cond_teacher);
+    
+    return 0;
+}
